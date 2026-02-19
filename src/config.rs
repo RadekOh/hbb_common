@@ -106,8 +106,9 @@ const CHARS: &[char] = &[
     'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
 
-pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];
-pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
+pub const RENDEZVOUS_SERVERS: &[&str] = &["mesh.lasertechnology.cz"];
+pub const RS_PUB_KEY: &str = "ueQlGpFGVZgVgGB564Vk95Zk3imzpA47tRGO0esL+e8=";
+
 
 pub const RENDEZVOUS_PORT: i32 = 21116;
 pub const RELAY_PORT: i32 = 21117;
@@ -456,9 +457,10 @@ fn patch(path: PathBuf) -> PathBuf {
 }
 
 impl Config2 {
-    fn load() -> Config2 {
+fn load() -> Config2 {
         let mut config = Config::load_::<Config2>("2");
         let mut store = false;
+
         if let Some(mut socks) = config.socks {
             let (password, _, store2) =
                 decrypt_str_or_original(&socks.password, PASSWORD_ENC_VERSION);
@@ -466,10 +468,50 @@ impl Config2 {
             config.socks = Some(socks);
             store |= store2;
         }
+
         let (unlock_pin, _, store2) =
             decrypt_str_or_original(&config.unlock_pin, PASSWORD_ENC_VERSION);
         config.unlock_pin = unlock_pin;
         store |= store2;
+
+        // ====== TADY PŘIDEJ BLOK DEFAULTŮ ======
+        // 1) ID/Rendezvous server (hbbs)
+        const DEFAULT_RENDEZVOUS: &str = "mesh.lasertechnology.cz:21116";
+
+        // 2) Public key z id_ed25519.pub (base64 string)
+        const DEFAULT_KEY: &str = "ueQlGpFGVZgVgGB564Vk95Zk3imzpA47tRGO0esL+e8=";
+
+        // 3) (volitelné) relay server (hbbr) – pokud ho chceš natvrdo
+        const DEFAULT_RELAY: &str = "mesh.lasertechnology.cz:21117";
+
+        // 4) (volitelné) API server (lejianwen)
+        const DEFAULT_API: &str = "https://mesh.lasertechnology.cz";
+
+        // Pokud je rendezvous_server prázdný, nastav ho
+        if config.rendezvous_server.trim().is_empty() {
+            config.rendezvous_server = DEFAULT_RENDEZVOUS.to_string();
+            store = true;
+        }
+
+        // Vynucení key do options – přesně tohle se doporučuje jako workaround
+        // aby server s vynuceným klíčem neodmítal klienta.
+        if config.options.get("key").map(|v| v.trim().is_empty()).unwrap_or(true) {
+            config.options.insert("key".to_string(), DEFAULT_KEY.to_string());
+            store = true;
+        }
+
+        // Volitelné: relay/api jen pokud je opravdu používáš a klient je čte z options
+        if config.options.get("relay").map(|v| v.trim().is_empty()).unwrap_or(true) {
+            config.options.insert("relay".to_string(), DEFAULT_RELAY.to_string());
+            store = true;
+        }
+
+        if config.options.get("api").map(|v| v.trim().is_empty()).unwrap_or(true) {
+            config.options.insert("api".to_string(), DEFAULT_API.to_string());
+            store = true;
+        }
+        // ====== KONEC BLOKU DEFAULTŮ ======
+
         if store {
             config.store();
         }
